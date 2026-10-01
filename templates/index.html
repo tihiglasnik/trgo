@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gdje je najjeftinije</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-row">
+    <div>
+      <span class="wordmark">gdje je najjeftinije</span>
+      <span class="tagline">popis proizvoda → adresa → koja trgovina, koliko košta</span>
+    </div>
+    <div class="topbar-actions">
+      <span id="auth-area"></span>
+      <button type="button" id="refresh-btn" class="btn-refresh" title="Briše staru arhivu i povlači najnoviju">
+        🔄 Osvježi podatke
+      </button>
+    </div>
+  </div>
+  <div class="wrap">
+    <p id="refresh-status" class="refresh-status" hidden></p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <form id="search-form" class="tag-card" autocomplete="off">
+    <div class="field">
+      <label for="address">Adresa</label>
+      <input type="text" id="address" name="address" placeholder="npr. Ilica 1, Zagreb" required>
+      <p class="hint" id="address-hint"></p>
+    </div>
+
+    <div class="field">
+      <label for="radius">Radijus pretrage</label>
+      <div class="radius-row">
+        <input type="range" id="radius" min="0.5" max="20" step="0.5" value="5">
+        <span class="radius-value"><span id="radius-value">5</span> km</span>
+      </div>
+    </div>
+
+    <div class="field lists-panel" id="lists-panel" hidden>
+      <label for="list-select">Moje liste</label>
+      <div class="lists-row">
+        <select id="list-select"></select>
+        <button type="button" id="list-load" class="btn-ghost">Učitaj</button>
+        <button type="button" id="list-delete" class="btn-ghost">Obriši</button>
+      </div>
+      <button type="button" id="list-save" class="btn-ghost">💾 Spremi trenutni popis kao novu listu</button>
+      <p class="hint" id="lists-hint"></p>
+    </div>
+
+    <div class="field">
+      <label>Proizvodi</label>
+      <div id="product-rows"></div>
+      <button type="button" id="add-product" class="btn-ghost">+ dodaj proizvod</button>
+    </div>
+
+    <button type="submit" id="submit-btn" class="btn-primary">Pronađi najbolju kupnju</button>
+    <p class="error" id="form-error" hidden></p>
+  </form>
+
+  <div class="tag-card browse-card">
+    <div class="field">
+      <label for="browse-query">Pregled po cijeni (sve varijante, poredano od najjeftinije)</label>
+      <div class="browse-row">
+        <input type="text" id="browse-query" placeholder='npr. "kava" ili "kava -instant"'>
+        <button type="button" id="browse-btn" class="btn-primary">Traži</button>
+      </div>
+      <div class="browse-filters">
+        <label class="inline-label">Težina od <input type="number" id="browse-min-g" min="0" step="10" placeholder="g"> g</label>
+        <label class="inline-label">do <input type="number" id="browse-max-g" min="0" step="10" placeholder="g"> g</label>
+      </div>
+      <div class="field">
+        <label for="browse-exclude" class="muted-small">Isključi riječi (odvojeno zarezom)</label>
+        <input type="text" id="browse-exclude" placeholder="npr. instant, 3u1, mlijeko">
+      </div>
+      <p class="hint" id="browse-hint">Koristi adresu i radijus postavljene gore. Riječ s "-" ispred isključuje (npr. "-instant").</p>
+    </div>
+    <div id="browse-results" class="receipt" hidden></div>
+  </div>
+
+  <section id="results" hidden>
+
+    <h2 class="section-title">Cijela košarica, sve u istoj trgovini</h2>
+    <div id="summary-cards" class="summary-cards"></div>
+    <div id="complete-list" class="receipt"></div>
+
+    <details id="per-item-details">
+      <summary>Po pojedinom proizvodu</summary>
+      <div id="per-item-list" class="receipt"></div>
+    </details>
+
+    <details id="all-stores-details">
+      <summary>Sve poslovnice u radijusu (uključujući nepotpune košarice)</summary>
+      <div id="all-stores-list" class="receipt receipt--muted"></div>
+    </details>
+
+  </section>
+
+  <p id="empty-state" class="empty-state">
+    Unesi adresu i barem jedan proizvod da vidiš gdje je najjeftinije.
+  </p>
+
+</main>
+
+<dialog id="auth-dialog" class="auth-dialog">
+  <form id="auth-form" method="dialog" autocomplete="on">
+    <div class="auth-tabs">
+      <button type="button" id="tab-login" class="auth-tab active">Prijava</button>
+      <button type="button" id="tab-register" class="auth-tab">Registracija</button>
+    </div>
+    <label for="auth-email">E-pošta</label>
+    <input type="email" id="auth-email" autocomplete="email" required>
+    <label for="auth-password">Lozinka <span class="muted-small" id="auth-pass-hint"></span></label>
+    <input type="password" id="auth-password" autocomplete="current-password" required minlength="8">
+    <p class="error" id="auth-error" hidden></p>
+    <div class="auth-actions">
+      <button type="button" id="auth-cancel" class="btn-ghost">Odustani</button>
+      <button type="submit" id="auth-submit" class="btn-primary">Prijavi se</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

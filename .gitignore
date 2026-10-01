@@ -1,0 +1,38 @@
+# Virtualno okruženje
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testovi i coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment varijable / tajne
+.env
+.env.*
+
+# Build / distribucija
+build/
+dist/
+*.egg-info/
+
+# OS datoteke
+.DS_Store
+Thumbs.db
+
+data/
+cijene-api/
+grocery.*
+grocery.db
+users.*
+users.db

@@ -1,0 +1,575 @@
+/* ---- token sustav ------------------------------------------------- */
+:root {
+  --bg:        #EEE7D6;   /* kraft papir, pozadina stranice */
+  --card:      #FBF8F0;   /* svjetliji papir za kartice */
+  --ink:       #1E2A1F;   /* tamno-zelena, gotovo crna - tekst */
+  --ink-soft:  #46503E;
+  --muted:     #746E5B;
+  --line:      #D9CFB4;
+  --accent:    #C98A1E;   /* gorušica / boja cjenovne naljepnice */
+  --accent-ink:#6B4A10;
+  --good:      #2F6B3C;
+  --bad:       #A23B2E;
+  --radius:    4px;
+
+  --font-ui:   'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ---- header --------------------------------------------------------- */
+.topbar {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 28px 0 24px;
+}
+.topbar .wrap { display: flex; flex-direction: column; gap: 4px; }
+.topbar-row {
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.wordmark {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.tagline {
+  font-size: 0.9rem;
+  color: #C9C2A9;
+}
+
+.btn-refresh {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid #6E6853;
+  color: var(--bg);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
+.btn-refresh:disabled { opacity: 0.6; cursor: default; }
+
+.refresh-status {
+  font-size: 0.82rem;
+  margin: 6px 0 0;
+  color: #C9C2A9;
+}
+.refresh-status.ok-text { color: #8FCB9B; }
+.refresh-status.error-text { color: #E28A7A; }
+
+main.wrap { padding-top: 28px; padding-bottom: 64px; }
+
+/* ---- forma / "cjenovna naljepnica" kartica --------------------------- */
+.tag-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+
+label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+input[type="text"] {
+  font: inherit;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+}
+input[type="text"]:focus,
+input[type="range"]:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-height: 1.1em;
+}
+.hint.error-text { color: var(--bad); }
+.hint.ok-text { color: var(--good); }
+
+.radius-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.radius-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+.radius-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 4.5em;
+  text-align: right;
+}
+
+/* ---- redovi proizvoda ------------------------------------------------- */
+#product-rows { display: flex; flex-direction: column; gap: 10px; }
+
+.product-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+.product-row-top { display: flex; gap: 8px; align-items: center; }
+.product-row-top input[type="text"] { flex: 1; }
+
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+.candidate-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+.candidate-item:hover { background: var(--bg); }
+.candidate-item.selected { background: var(--accent); color: #fff; }
+.candidate-item .n-chains {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.candidate-item.selected .n-chains { color: #fff; opacity: 0.85; }
+
+.chosen-label {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #1E5C2A;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.remove-row {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 4px 6px;
+}
+.remove-row:hover { color: var(--bad); }
+
+/* ---- gumbi -------------------------------------------------------- */
+.btn-primary, .btn-ghost {
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-primary {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 12px 20px;
+  font-size: 1rem;
+}
+.btn-primary:hover { background: #2B3B2D; }
+.btn-primary:disabled { opacity: 0.55; cursor: default; }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--ink-soft);
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  align-self: flex-start;
+}
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent-ink); }
+
+.error {
+  color: var(--bad);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+/* ---- rezultati / "racun" stil --------------------------------------- */
+.section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 36px 0 10px;
+}
+
+.receipt {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.receipt--muted { opacity: 0.9; }
+
+.receipt-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.receipt-row:last-child { border-bottom: none; }
+
+.receipt-row .name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+  font-weight: 500;
+}
+.receipt-row .leader {
+  flex: 1;
+  border-bottom: 2px dotted var(--line);
+  margin-bottom: 5px;
+  min-width: 12px;
+}
+.receipt-row .meta {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.receipt-row .price {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.receipt-row.best .price { color: var(--good); }
+.receipt-row.missing .price { color: var(--bad); }
+
+.chain-row { cursor: pointer; }
+.chain-row:hover { background: var(--bg); }
+.chain-toggle-hint {
+  font-style: italic;
+  opacity: 0.75;
+}
+.chain-detail {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px 10px 28px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+.chain-detail[hidden] { display: none; }
+.chain-detail-figures {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.item-block {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.item-block:last-child { border-bottom: none; }
+.item-block .item-name {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.item-block .sub-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  padding: 2px 0;
+}
+.item-block .sub-row .label { color: var(--muted); }
+.item-block .sub-row .val { font-family: var(--font-mono); }
+.item-block .not-found { color: var(--muted); font-size: 0.9rem; font-style: italic; }
+.item-block .sub-row-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--good);
+  margin-bottom: 4px;
+}
+
+.receipt-note {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-style: italic;
+  border-bottom: 1px solid var(--line);
+}
+.receipt-note:last-child { border-bottom: none; }
+
+#combined-summary { display: none; } /* zamijenjeno s .summary-cards, ostavljeno za kompatibilnost */
+
+.summary-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.summary-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--good);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.summary-card-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+.summary-card-store {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+.summary-card-figures {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.summary-card-price {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--good);
+}
+.summary-card-dist {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.summary-card-missing {
+  font-size: 0.82rem;
+  color: var(--bad);
+}
+
+details { margin-top: 28px; }
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  padding: 8px 0;
+}
+
+.empty-state {
+  color: var(--muted);
+  text-align: center;
+  padding: 40px 0;
+  font-size: 0.95rem;
+}
+
+/* ---- responsive ----------------------------------------------------- */
+@media (max-width: 480px) {
+  .wrap { padding: 0 14px; }
+  .tag-card { padding: 18px; }
+  .receipt-row .name { max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ---- faza 2: prijava, liste, zapamceni izbori ------------------------- */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#auth-area { display: inline-flex; align-items: center; gap: 10px; }
+.auth-email {
+  font-size: 0.82rem;
+  color: #C9C2A9;
+  max-width: 14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chosen-label { justify-content: space-between; }
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--accent-ink); }
+
+.lists-panel[hidden] { display: none; }
+.lists-panel {
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+.lists-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lists-row select {
+  flex: 1;
+  min-width: 10em;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+}
+
+.auth-dialog {
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  padding: 22px;
+  width: min(92vw, 380px);
+}
+.auth-dialog::backdrop { background: rgba(30, 42, 31, 0.55); }
+.auth-dialog form { display: flex; flex-direction: column; gap: 8px; }
+.auth-dialog input[type="email"],
+.auth-dialog input[type="password"] {
+  font: inherit;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+}
+.auth-dialog input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.auth-tabs { display: flex; gap: 6px; margin-bottom: 6px; }
+.auth-tab {
+  flex: 1;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+}
+.auth-tab.active { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.auth-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.muted-small { font-weight: 400; color: var(--muted); font-size: 0.78rem; }
+
+/* ---- pregled po cijeni ------------------------------------------------- */
+.browse-card {
+  margin-top: 20px;
+  border-left-color: var(--good);
+}
+.browse-row { display: flex; gap: 8px; }
+.browse-row input[type="text"] { flex: 1; }
+.browse-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.inline-label { display: flex; align-items: center; gap: 6px; }
+.inline-label input[type="number"] {
+  width: 5em;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+}
+#browse-results[hidden] { display: none; }
+#browse-results { margin-top: 4px; }
+
+/* ---- "siroki" red za dugacke nazive proizvoda (ne rezemo trotockom) --- */
+.receipt-row-wide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.receipt-row-wide:last-child { border-bottom: none; }
+.receipt-row-wide .rw-name {
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: break-word;
+  line-height: 1.35;
+}
+.receipt-row-wide .rw-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.receipt-row-wide .rw-store {
+  font-size: 0.83rem;
+  color: var(--muted);
+  overflow-wrap: break-word;
+}
+.receipt-row-wide .rw-price {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.receipt-row-wide.best .rw-price { color: var(--good); }
+.receipt-row-wide.missing .rw-price { color: var(--bad); }
+.receipt-row-wide .rw-missing {
+  font-size: 0.82rem;
+  color: var(--bad);
+}
