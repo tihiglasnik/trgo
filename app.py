@@ -264,7 +264,15 @@ def api_browse():
     if not (1 <= limit <= MAX_BROWSE_LIMIT):
         return error(f"limit mora biti izmedju 1 i {MAX_BROWSE_LIMIT}.")
 
-    results = browse_by_price(get_db(), q, lat, lon, radius, min_grams=min_g, max_grams=max_g, limit=limit)
+    try:
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return error("offset mora biti cijeli broj.")
+    if offset < 0:
+        return error("offset ne smije biti negativan.")
+
+    results, total = browse_by_price(get_db(), q, lat, lon, radius, min_grams=min_g, max_grams=max_g,
+                                      limit=limit, offset=offset)
     return jsonify({
         "results": [
             {"ean": r.ean, "label": r.label, "price": r.price, "chain": r.chain,
@@ -272,6 +280,8 @@ def api_browse():
             for r in results
         ],
         "count": len(results),
+        "total": total,
+        "offset": offset,
     })
 
 
@@ -471,7 +481,8 @@ def api_find():
     def as_dict(r):
         return {
             "chain": r.chain, "address": r.address, "city": r.city,
-            "distance_km": r.distance_km, "total": r.total, "missing": r.missing_items,
+            "distance_km": r.distance_km, "total": r.total,
+            "missing": [labels.get(q, q) for q in r.missing_items],
         }
 
     # po lancu: najniza ukupna cijena unutar lanca + najbliza konkretna poslovnica tog
@@ -500,6 +511,71 @@ def api_find():
         "nearest_overall": as_dict(near) if near else None,
         "compromise": as_dict(comp) if comp else None,
     })
+
+
+@app.route("/api/optimize", methods=["POST"])
+def api_optimize():
+    """
+    Provjerava isplati li se razdijeliti kupnju na DVIJE poslovnice umjesto
+    jedne. Vraca prijedlog SAMO ako postoji par koji pokriva sve stavke I
+    stedi barem 'min_savings' u odnosu na najbolju jednu poslovnicu.
+    """
+    data = request.get_json(silent=True) or {}
+
+    try:
+        lat = float(data.get("lat"))
+        lon = float(data.get("lon"))
+    except (TypeError, ValueError):
+        return error("Nedostaju ili su neispravne koordinate (lat/lon).")
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return error("Koordinate su izvan valjanog raspona.")
+
+    try:
+        radius = float(data.get("radius", 5))
+    except (TypeError, ValueError):
+        return error("Radijus mora biti broj.")
+    if not (0 < radius <= MAX_RADIUS_KM):
+        return error(f"Radijus mora biti izmedju 0 i {MAX_RADIUS_KM} km.")
+
+    try:
+        min_savings = float(data.get("min_savings", 5.0))
+    except (TypeError, ValueError):
+        return error("min_savings mora biti broj.")
+    if min_savings < 0:
+        return error("min_savings ne smije biti negativan.")
+
+    items, labels, err = _parse_items(data.get("items"))
+    if err:
+        return error(err)
+
+    from optimize import optimize_two_stores
+    plan, baseline, _ = optimize_two_stores(get_db(), items, lat, lon, radius, min_savings=min_savings)
+
+    def store_dict(r):
+        return {"chain": r.chain, "address": r.address, "city": r.city,
+                "distance_km": r.distance_km, "total": r.total}
+
+    baseline_out = None
+    if baseline:
+        baseline_out = store_dict(baseline)
+        baseline_out["total_with_travel"] = round(baseline.total + 0.30 * (baseline.distance_km or 0), 2)
+
+    plan_out = None
+    if plan:
+        s1, s2 = plan.stores
+        plan_out = {
+            "stores": [store_dict(s1), store_dict(s2)],
+            "items_cost": round(plan.items_cost, 2),
+            "travel_cost": round(plan.travel_cost, 2),
+            "total_cost": round(plan.total_cost, 2),
+            "assignment": [
+                {"query": q, "label": labels.get(q, q), "store_index": idx}
+                for q, idx in plan.assignment.items()
+            ],
+            "savings": round((baseline_out["total_with_travel"] - plan.total_cost), 2) if baseline_out else None,
+        }
+
+    return jsonify({"plan": plan_out, "baseline": baseline_out})
 
 
 @app.route("/api/refresh", methods=["POST"])
@@ -533,7 +609,9 @@ def api_refresh():
             return error(f"Preuzimanje dnevne arhive nije uspjelo: {exc}", status=502)
 
         try:
-            failed = run_import(fresh_archive_dir, fresh_enrichment_dir, tmp_db_path, chains=None)
+            skip_fallback = str(request.args.get("skip_fallback_search", "")).lower() in ("1", "true", "yes")
+            failed = run_import(fresh_archive_dir, fresh_enrichment_dir, tmp_db_path, chains=None,
+                                 build_chain_fallback_search=not skip_fallback)
         except FileNotFoundError as exc:
             return error(str(exc), status=500)
 

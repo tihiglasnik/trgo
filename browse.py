@@ -88,7 +88,10 @@ def browse_by_price(
     min_grams: float | None = None,
     max_grams: float | None = None,
     limit: int = 15,
-) -> list[BrowseResult]:
+    offset: int = 0,
+) -> tuple[list[BrowseResult], int]:
+    """Vraca (stranica_rezultata, ukupan_broj_rezultata) - potonje omogucuje
+    "ucitaj jos" u sucelju bez ponovnog pogadjanja koliko ih ukupno ima."""
     include, exclude = _split_tokens(query)
     match = _fts_expr(include, exclude)
     if not match:
@@ -176,4 +179,4 @@ def browse_by_price(
                                      address=address, city=city, distance_km=dist))
 
     results.sort(key=lambda r: r.price)
-    return results[:limit]
+    return results[offset:offset + limit], len(results)

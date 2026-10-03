@@ -573,3 +573,23 @@ summary {
   font-size: 0.82rem;
   color: var(--bad);
 }
+
+/* ---- optimizacija kroz dvije trgovine ---------------------------------- */
+.optimize-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.optimize-stores { font-size: 0.92rem; margin: 6px 0 10px; display: flex; flex-direction: column; gap: 2px; }
+.optimize-saving { font-weight: 600; color: var(--good); margin: 8px 0; }
+.optimize-assignment { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 4px; }
+
+.refresh-fast-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #B8B093;
+}

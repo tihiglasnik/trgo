@@ -79,19 +79,39 @@ def search(conn: sqlite3.Connection, query: str, limit: int = 8, fetch_pool: int
     if results:
         return results
 
-    # fallback: nema u pociscenom katalogu, trazimo direktno po nazivima iz arhive
-    rows = conn.execute(
-        """
-        SELECT cp2.name, COUNT(DISTINCT cp2.chain) AS n_chains
-        FROM fts_chain_products f
-        JOIN chain_products cp2 ON cp2.rowid = f.rowid
-        WHERE fts_chain_products MATCH ?
-        GROUP BY LOWER(cp2.name)
-        ORDER BY n_chains DESC
-        LIMIT ?
-        """,
-        (match, fetch_pool),
-    ).fetchall()
+    # fallback: nema u pociscenom katalogu, trazimo direktno po nazivima iz arhive.
+    # fts_chain_products moze ne postojati (vidi import_data.py --skip-fallback-search,
+    # opcija za spore diskove) - tad padamo natrag na LIKE (sporije, ali i dalje radi).
+    has_fallback_fts = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='fts_chain_products'"
+    ).fetchone()
+    if has_fallback_fts:
+        rows = conn.execute(
+            """
+            SELECT cp2.name, COUNT(DISTINCT cp2.chain) AS n_chains
+            FROM fts_chain_products f
+            JOIN chain_products cp2 ON cp2.rowid = f.rowid
+            WHERE fts_chain_products MATCH ?
+            GROUP BY LOWER(cp2.name)
+            ORDER BY n_chains DESC
+            LIMIT ?
+            """,
+            (match, fetch_pool),
+        ).fetchall()
+    else:
+        like_conditions = " AND ".join("LOWER(name) LIKE ?" for _ in tokens)
+        like_params = [f"%{t}%" for t in tokens]
+        rows = conn.execute(
+            f"""
+            SELECT name, COUNT(DISTINCT chain) AS n_chains
+            FROM chain_products
+            WHERE {like_conditions}
+            GROUP BY LOWER(name)
+            ORDER BY n_chains DESC
+            LIMIT ?
+            """,
+            (*like_params, fetch_pool),
+        ).fetchall()
     for name, n_chains in rows:
         results.append(Candidate(ean=None, label=name, chains_available=n_chains))
         # ean=None znaci: koristit cemo naziv izravno (bez cross-chain matchinga)

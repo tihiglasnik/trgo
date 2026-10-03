@@ -93,10 +93,20 @@ CREATE INDEX IF NOT EXISTS idx_stores_chain ON stores (chain);
 # (npr. "mlijeko") znao trajati i preko 4 sekunde na 9M+ redaka. FTS5 to
 # svodi na jednoznamenkaste milisekunde (izmjereno: mlijeko 4944ms -> 10ms).
 # Vanjski sadrzaj (content=) znaci da FTS ne duplicira tekst, samo indeks.
-SCHEMA_FTS = """
+SCHEMA_FTS_CANONICAL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_canonical USING fts5(
     brand, name, content='canonical_products', content_rowid='rowid'
 );
+"""
+
+# fts_chain_products indeksira SVE proizvode iz arhive (366k+ redaka) - koristi
+# se samo kao fallback kad upit ne nadje nista u pociscenom katalogu
+# (otprilike 47% proizvoda nema EAN u katalogu, pa ovaj fallback nije rijedak).
+# Izgradnja ove tablice je izmjereno najskuplji dio FTS koraka (~4.5s na brzom
+# disku u razvojnom okruzenju) - na sporijem/mehanickom disku moze biti
+# neproporcionalno sporije i glasnije, jer FTS5 radi puno sitnih zapisa pri
+# izgradnji indeksa. Zato je ovo opcionalno (build_chain_fallback_search).
+SCHEMA_FTS_CHAIN = """
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_chain_products USING fts5(
     name, content='chain_products', content_rowid='rowid'
 );
@@ -300,6 +310,7 @@ def run_import(
     enrichment_dir: Path,
     db_path: Path,
     chains: list[str] | None = None,
+    build_chain_fallback_search: bool = True,
 ) -> list[str]:
     """
     Puni import: enrichment + arhiva -> SQLite baza.
@@ -347,11 +358,19 @@ def run_import(
         conn.executescript(SCHEMA_INDEXES)
         conn.commit()
 
-        print("Gradim full-text pretragu...")
-        conn.executescript(SCHEMA_FTS)
+        print("Gradim full-text pretragu (glavni katalog)...")
+        conn.executescript(SCHEMA_FTS_CANONICAL)
         conn.execute("INSERT INTO fts_canonical(rowid, brand, name) SELECT rowid, brand, name FROM canonical_products")
-        conn.execute("INSERT INTO fts_chain_products(rowid, name) SELECT rowid, name FROM chain_products")
         conn.commit()
+
+        if build_chain_fallback_search:
+            print("Gradim full-text pretragu (fallback za proizvode izvan kataloga)...")
+            conn.executescript(SCHEMA_FTS_CHAIN)
+            conn.execute("INSERT INTO fts_chain_products(rowid, name) SELECT rowid, name FROM chain_products")
+            conn.commit()
+        else:
+            print("  preskoceno (--skip-fallback-search) - pretraga za proizvode izvan"
+                  " glavnog kataloga bit ce sporija (LIKE umjesto FTS5), ali osvjezavanje je brze.")
 
         return failed
     finally:
@@ -365,10 +384,16 @@ def main() -> None:
     ap.add_argument("--db", type=Path, default=Path("grocery.db"), help="izlazna SQLite baza (default: grocery.db)")
     ap.add_argument("--chains", nargs="*", default=None,
                      help="ako zelis importirati samo odredjene lance (npr. --chains konzum lidl spar)")
+    ap.add_argument("--skip-fallback-search", action="store_true",
+                     help="preskoci izgradnju FTS pretrage za proizvode izvan glavnog kataloga "
+                          "(~366k redaka, izmjereno najskuplji dio FTS koraka). Osvjezavanje je brze i "
+                          "tise, ali pretraga za ~47%% proizvoda bez EAN-a u katalogu ostaje sporija "
+                          "(LIKE upit umjesto FTS5) - dobro za spore/mehanicke diskove.")
     args = ap.parse_args()
 
     try:
-        failed = run_import(args.archive_dir, args.enrichment_dir, args.db, args.chains)
+        failed = run_import(args.archive_dir, args.enrichment_dir, args.db, args.chains,
+                             build_chain_fallback_search=not args.skip_fallback_search)
     except FileNotFoundError as exc:
         print(exc, file=sys.stderr)
         sys.exit(1)

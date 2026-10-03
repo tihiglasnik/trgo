@@ -35,6 +35,9 @@ def main() -> None:
                      help="gdje spremiti preuzete sirove podatke (default: trenutna mapa)")
     ap.add_argument("--chains", nargs="*", default=None,
                      help="uvezi samo odredjene lance, npr. --chains konzum lidl spar")
+    ap.add_argument("--skip-fallback-search", action="store_true",
+                     help="brze/tise osvjezavanje na sporijim diskovima, uz sporiju pretragu za "
+                          "proizvode izvan glavnog kataloga (vidi import_data.py --help)")
     args = ap.parse_args()
 
     print("[1/3] Preuzimam enrichment podatke (geolokacije + pocisceni katalog)...")
@@ -53,7 +56,8 @@ def main() -> None:
 
     print("\n[3/3] Uvozim u lokalnu bazu...")
     try:
-        failed = run_import(archive_dir, enrichment_dir, args.db, args.chains)
+        failed = run_import(archive_dir, enrichment_dir, args.db, args.chains,
+                             build_chain_fallback_search=not args.skip_fallback_search)
     except FileNotFoundError as exc:
         print(exc, file=sys.stderr)
         sys.exit(1)

@@ -76,7 +76,7 @@ def print_per_item_report(conn, items, lat: float, lon: float, radius: float, la
             print(f"     {chain:<12} {price:.2f} EUR")
 
 
-def print_results(results, radius: float, top_n: int = 15) -> None:
+def print_results(results, radius: float, labels: dict[str, str], top_n: int = 15) -> None:
     if not results:
         print(f"\nNema poslovnica u radijusu od {radius} km s poznatom lokacijom.")
         return
@@ -89,7 +89,7 @@ def print_results(results, radius: float, top_n: int = 15) -> None:
     print(f"{'Lanac':<10}{'Adresa':<32}{'Udaljenost':<12}{'Ukupno':<10}{'Nedostaje'}")
     print("-" * 90)
     for r in results_sorted[:top_n]:
-        missing = ", ".join(r.missing_items) if r.missing_items else "-"
+        missing = ", ".join(labels.get(q, q) for q in r.missing_items) if r.missing_items else "-"
         dist = f"{r.distance_km} km" if r.distance_km is not None else "?"
         addr = f"{r.address}, {r.city}"[:30]
         print(f"{r.chain:<10}{addr:<32}{dist:<12}{r.total:<10.2f}{missing}")
@@ -125,7 +125,8 @@ def print_results(results, radius: float, top_n: int = 15) -> None:
     comp = ranking.best_compromise(results)
     if near:
         print(f"\n  🏠 Najbliža poslovnica ukupno: {near.chain} - {near.address}, {near.city} "
-              f"({near.distance_km} km, {near.total:.2f} EUR, nedostaje: {', '.join(near.missing_items) or '-'})")
+              f"({near.distance_km} km, {near.total:.2f} EUR, nedostaje: "
+              f"{', '.join(labels.get(q, q) for q in near.missing_items) or '-'})")
     if comp:
         print(f"  ⚖️  Kompromis cijena/udaljenost (sve dostupno): {comp.chain} - {comp.address}, {comp.city} "
               f"({comp.total:.2f} EUR, {comp.distance_km} km)")
@@ -155,6 +156,10 @@ def main() -> None:
     ap.add_argument("--min-g", type=float, help="samo uz --browse: minimalna tezina u gramima")
     ap.add_argument("--max-g", type=float, help="samo uz --browse: maksimalna tezina u gramima")
     ap.add_argument("--limit", type=int, default=15, help="samo uz --browse: broj rezultata (default 15)")
+    ap.add_argument("--optimize", action="store_true",
+                     help="uz --product: provjeri isplati li se razdijeliti kupnju na DVIJE poslovnice")
+    ap.add_argument("--min-savings", type=float, default=5.0,
+                     help="samo uz --optimize: minimalna usteda u EUR da se prijedlog uopce pokaze (default 5)")
     args = ap.parse_args()
 
     if not args.products and not args.browse:
@@ -201,8 +206,8 @@ def main() -> None:
 
     if args.browse:
         from browse import browse_by_price
-        results = browse_by_price(conn, args.browse, lat, lon, args.radius,
-                                   min_grams=args.min_g, max_grams=args.max_g, limit=args.limit)
+        results, total = browse_by_price(conn, args.browse, lat, lon, args.radius,
+                                          min_grams=args.min_g, max_grams=args.max_g, limit=args.limit)
         print(f"\nPregled po cijeni za '{args.browse}' (radijus {args.radius} km):")
         if not results:
             print("  Nema rezultata.")
@@ -210,6 +215,8 @@ def main() -> None:
             for r in results:
                 print(f"  {r.price:6.2f} EUR  {r.chain:<10} {r.distance_km:5.2f} km  "
                       f"{r.address}, {r.city:<15} {r.label}")
+            if total > len(results):
+                print(f"  ... i jos {total - len(results)} (povecaj --limit da vidis vise)")
         if not items:
             return
 
@@ -221,7 +228,31 @@ def main() -> None:
     results = calculate_store_options(conn, items, lat, lon, max_distance_km=args.radius)
 
     print_per_item_report(conn, items, lat, lon, args.radius, labels)
-    print_results(results, args.radius)
+    print_results(results, args.radius, labels)
+
+    if args.optimize:
+        from optimize import optimize_two_stores
+        plan, baseline, _ = optimize_two_stores(conn, items, lat, lon, args.radius, min_savings=args.min_savings)
+        print(f"\nOptimizacija kroz DVIJE poslovnice (prag ustede: {args.min_savings:.2f} EUR):")
+        if not baseline:
+            print("  Nema nijedne poslovnice gdje je sve dostupno - nema ni osnove za usporedbu.")
+        elif plan:
+            s1, s2 = plan.stores
+            single_total = baseline.total + 0.30 * (baseline.distance_km or 0)
+            saving = single_total - plan.total_cost
+            print(f"  Isplati se! {s1.chain} ({s1.address}, {s1.city}, {s1.distance_km} km) + "
+                  f"{s2.chain} ({s2.address}, {s2.city}, {s2.distance_km} km)")
+            print(f"  Cijena stavki: {plan.items_cost:.2f} EUR, procijenjeni trosak puta: {plan.travel_cost:.2f} EUR, "
+                  f"ukupno: {plan.total_cost:.2f} EUR")
+            print(f"  Usteda u odnosu na najbolju jednu poslovnicu ({baseline.chain}, {single_total:.2f} EUR): "
+                  f"{saving:.2f} EUR")
+            print("  Raspodjela:")
+            for q, idx in plan.assignment.items():
+                store = s1 if idx == 0 else s2
+                print(f"    {labels.get(q, q)} -> {store.chain}")
+        else:
+            print(f"  Ne isplati se - najbolja jedna poslovnica ({baseline.chain}, {baseline.total:.2f} EUR) "
+                  f"je dovoljno dobra, nijedan par ne stedi barem {args.min_savings:.2f} EUR.")
 
 
 if __name__ == "__main__":

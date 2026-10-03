@@ -25,6 +25,10 @@
     </div>
   </div>
   <div class="wrap">
+    <label class="inline-label refresh-fast-label">
+      <input type="checkbox" id="refresh-fast">
+      Brže (ali sporija pretraga proizvoda izvan glavnog kataloga) — za spore/mehaničke diskove
+    </label>
     <p id="refresh-status" class="refresh-status" hidden></p>
   </div>
 </header>
@@ -63,6 +67,17 @@
       <button type="button" id="add-product" class="btn-ghost">+ dodaj proizvod</button>
     </div>
 
+    <div class="field">
+      <label class="inline-label">
+        <input type="checkbox" id="optimize-check">
+        Provjeri isplati li se razdijeliti kupnju na 2 trgovine
+      </label>
+      <div class="browse-filters" id="optimize-savings-row" hidden>
+        <label class="inline-label">Prikaži samo ako štedi barem
+          <input type="number" id="optimize-min-savings" min="0" step="0.5" value="5"> EUR</label>
+      </div>
+    </div>
+
     <button type="submit" id="submit-btn" class="btn-primary">Pronađi najbolju kupnju</button>
     <p class="error" id="form-error" hidden></p>
   </form>
@@ -88,6 +103,8 @@
   </div>
 
   <section id="results" hidden>
+
+    <div id="optimize-card-wrap"></div>
 
     <h2 class="section-title">Cijela košarica, sve u istoj trgovini</h2>
     <div id="summary-cards" class="summary-cards"></div>

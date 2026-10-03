@@ -49,8 +49,68 @@ radiusInput.addEventListener("input", () => {
   radiusValue.textContent = radiusInput.value;
 });
 
+const optimizeCheck = document.getElementById("optimize-check");
+const optimizeSavingsRow = document.getElementById("optimize-savings-row");
+const optimizeMinSavings = document.getElementById("optimize-min-savings");
+const optimizeCardWrap = document.getElementById("optimize-card-wrap");
+optimizeCheck.addEventListener("change", () => {
+  optimizeSavingsRow.hidden = !optimizeCheck.checked;
+});
+
+function renderOptimizeCard(data) {
+  optimizeCardWrap.innerHTML = "";
+  if (!data || !data.plan) return;
+  const { plan, baseline } = data;
+  const [s1, s2] = plan.stores;
+
+  const card = el(
+    "div", { class: "optimize-card" },
+    el("div", { class: "summary-card-label" }, "🔀 Isplati se razdijeliti kupnju"),
+    el(
+      "div", { class: "optimize-stores" },
+      el("div", {}, el("strong", {}, s1.chain), ` — ${s1.address}, ${s1.city} (${fmtDist(s1.distance_km)})`),
+      el("div", {}, el("strong", {}, s2.chain), ` — ${s2.address}, ${s2.city} (${fmtDist(s2.distance_km)})`)
+    ),
+    el(
+      "div", { class: "summary-card-figures" },
+      el("span", { class: "summary-card-price" }, fmtPrice(plan.total_cost)),
+      el("span", { class: "summary-card-dist" },
+        `stavke ${fmtPrice(plan.items_cost)} + procijenjeni put ${fmtPrice(plan.travel_cost)}`)
+    ),
+    el("div", { class: "optimize-saving" },
+      `💰 Ušteda u odnosu na ${baseline.chain} samostalno: ${fmtPrice(plan.savings)}`),
+    el("div", { class: "optimize-assignment" },
+      ...plan.assignment.map((a) => el(
+        "div", { class: "sub-row" },
+        el("span", { class: "label" }, a.label),
+        el("span", { class: "val" }, a.store_index === 0 ? s1.chain : s2.chain)
+      ))
+    )
+  );
+  optimizeCardWrap.appendChild(card);
+}
+
+async function maybeRunOptimize(lat, lon, radius, items) {
+  optimizeCardWrap.innerHTML = "";
+  if (!optimizeCheck.checked) return;
+  try {
+    const resp = await fetch("/api/optimize", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lat, lon, radius, items,
+        min_savings: parseFloat(optimizeMinSavings.value) || 0,
+      }),
+    });
+    const data = await resp.json();
+    if (resp.ok) renderOptimizeCard(data);
+  } catch (err) {
+    // tiho - ovo je dopunska provjera, ne smije srusiti glavni prikaz rezultata
+  }
+}
+
 /* ---- osvjezavanje podataka (brise staru arhivu, povlaci novu) ---------- */
 const refreshBtn = document.getElementById("refresh-btn");
+const refreshFast = document.getElementById("refresh-fast");
 const refreshStatus = document.getElementById("refresh-status");
 
 refreshBtn.addEventListener("click", async () => {
@@ -67,7 +127,8 @@ refreshBtn.addEventListener("click", async () => {
   refreshStatus.textContent = "Preuzimam najnoviju arhivu i katalog, ovo može potrajati...";
 
   try {
-    const resp = await fetch("/api/refresh", { method: "POST" });
+    const qs = refreshFast.checked ? "?skip_fallback_search=1" : "";
+    const resp = await fetch(`/api/refresh${qs}`, { method: "POST" });
     const data = await resp.json();
     if (!resp.ok) {
       refreshStatus.className = "refresh-status error-text";
@@ -284,6 +345,7 @@ form.addEventListener("submit", async (e) => {
       return;
     }
     renderResults(findData, parseFloat(radiusInput.value));
+    await maybeRunOptimize(geoData.lat, geoData.lon, parseFloat(radiusInput.value), items);
   } catch (err) {
     showFormError("Nesto je posla po zlu - provjeri internetsku vezu i pokusaj ponovno.");
   } finally {
@@ -605,6 +667,58 @@ function setBrowseHint(msg, kind) {
   browseHint.className = "hint" + (kind === "err" ? " error-text" : "");
 }
 
+const BROWSE_PAGE_SIZE = 15;
+let browseState = null; // { lat, lon, radius, fullQuery, minG, maxG, shown, total }
+
+function appendBrowseRows(results, startIndex) {
+  results.forEach((r, i) => {
+    browseResults.appendChild(wideReceiptRow(
+      r.label, `${r.chain} — ${r.address}, ${r.city}`,
+      fmtPrice(r.price), fmtDist(r.distance_km), { best: startIndex + i === 0 }
+    ));
+  });
+}
+
+function renderLoadMoreButton() {
+  const old = document.getElementById("browse-load-more");
+  if (old) old.remove();
+  if (!browseState || browseState.shown >= browseState.total) return;
+  const remaining = browseState.total - browseState.shown;
+  const btn = el(
+    "button",
+    { type: "button", id: "browse-load-more", class: "btn-ghost",
+      onclick: () => loadMoreBrowse() },
+    `Učitaj još ${Math.min(BROWSE_PAGE_SIZE, remaining)}`
+  );
+  browseResults.insertAdjacentElement("afterend", btn);
+}
+
+async function loadMoreBrowse() {
+  if (!browseState) return;
+  const btn = document.getElementById("browse-load-more");
+  if (btn) { btn.disabled = true; btn.textContent = "Učitavam..."; }
+  try {
+    const params = new URLSearchParams({
+      q: browseState.fullQuery, lat: browseState.lat, lon: browseState.lon,
+      radius: browseState.radius, limit: BROWSE_PAGE_SIZE, offset: browseState.shown,
+    });
+    if (browseState.minG) params.set("min_g", browseState.minG);
+    if (browseState.maxG) params.set("max_g", browseState.maxG);
+
+    const resp = await fetch(`/api/browse?${params.toString()}`);
+    const data = await resp.json();
+    if (!resp.ok) { setBrowseHint(data.error || "Pretraga nije uspjela.", "err"); return; }
+
+    appendBrowseRows(data.results, browseState.shown);
+    browseState.shown += data.results.length;
+    browseState.total = data.total;
+    setBrowseHint(`Prikazano ${browseState.shown} od ${browseState.total}.`);
+    renderLoadMoreButton();
+  } catch (err) {
+    setBrowseHint("Veza sa serverom nije uspjela.", "err");
+  }
+}
+
 async function runBrowse() {
   const q = browseQuery.value.trim();
   if (!q) { setBrowseHint("Upiši što tražiš (npr. \"kava\").", "err"); return; }
@@ -615,6 +729,9 @@ async function runBrowse() {
   browseBtn.textContent = "Tražim...";
   setBrowseHint("Tražim adresu...");
   browseResults.hidden = true;
+  browseState = null;
+  const oldBtn = document.getElementById("browse-load-more");
+  if (oldBtn) oldBtn.remove();
 
   try {
     const geoResp = await fetch("/api/geocode", {
@@ -626,12 +743,15 @@ async function runBrowse() {
 
     const exclWords = browseExclude.value.split(/[,\s]+/).map((w) => w.trim()).filter(Boolean);
     const fullQuery = [q, ...exclWords.map((w) => `-${w}`)].join(" ");
+    const radius = parseFloat(radiusInput.value);
+    const minG = browseMinG.value;
+    const maxG = browseMaxG.value;
 
     const params = new URLSearchParams({
-      q: fullQuery, lat: geoData.lat, lon: geoData.lon, radius: parseFloat(radiusInput.value), limit: 15,
+      q: fullQuery, lat: geoData.lat, lon: geoData.lon, radius, limit: BROWSE_PAGE_SIZE,
     });
-    if (browseMinG.value) params.set("min_g", browseMinG.value);
-    if (browseMaxG.value) params.set("max_g", browseMaxG.value);
+    if (minG) params.set("min_g", minG);
+    if (maxG) params.set("max_g", maxG);
 
     const resp = await fetch(`/api/browse?${params.toString()}`);
     const data = await resp.json();
@@ -641,15 +761,13 @@ async function runBrowse() {
     if (data.results.length === 0) {
       browseResults.appendChild(el("div", { class: "receipt-row" }, el("span", {}, "Nema rezultata u ovom radijusu.")));
     } else {
-      data.results.forEach((r, i) => {
-        browseResults.appendChild(wideReceiptRow(
-          r.label, `${r.chain} — ${r.address}, ${r.city}`,
-          fmtPrice(r.price), fmtDist(r.distance_km), { best: i === 0 }
-        ));
-      });
+      appendBrowseRows(data.results, 0);
     }
     browseResults.hidden = false;
-    setBrowseHint(`${data.count} rezultata.`, data.count ? undefined : "err");
+    browseState = { lat: geoData.lat, lon: geoData.lon, radius, fullQuery, minG, maxG,
+                     shown: data.results.length, total: data.total };
+    setBrowseHint(`Prikazano ${browseState.shown} od ${browseState.total}.`, browseState.total ? undefined : "err");
+    renderLoadMoreButton();
   } catch (err) {
     setBrowseHint("Veza sa serverom nije uspjela.", "err");
   } finally {
