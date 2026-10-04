@@ -237,8 +237,11 @@ async function searchForRow(id, query) {
 function renderCandidates(id, errorMsg) {
   const state = rows.get(id);
   const host = document.getElementById(`candidates-${id}`);
+  const rowEl = document.getElementById(`row-${id}`);
   if (!host || !state) return;
   host.innerHTML = "";
+
+  if (rowEl) rowEl.classList.toggle("has-selection", !!state.selected);
 
   if (state.selected) {
     host.appendChild(el(
@@ -661,6 +664,7 @@ const browseMaxG = document.getElementById("browse-max-g");
 const browseExclude = document.getElementById("browse-exclude");
 const browseHint = document.getElementById("browse-hint");
 const browseResults = document.getElementById("browse-results");
+const browseResultsDetails = document.getElementById("browse-results-details");
 
 function setBrowseHint(msg, kind) {
   browseHint.textContent = msg || "Koristi adresu i radijus postavljene gore. Riječ s \"-\" ispred isključuje (npr. \"-instant\").";
@@ -728,7 +732,7 @@ async function runBrowse() {
   browseBtn.disabled = true;
   browseBtn.textContent = "Tražim...";
   setBrowseHint("Tražim adresu...");
-  browseResults.hidden = true;
+  browseResultsDetails.hidden = true;
   browseState = null;
   const oldBtn = document.getElementById("browse-load-more");
   if (oldBtn) oldBtn.remove();
@@ -763,7 +767,9 @@ async function runBrowse() {
     } else {
       appendBrowseRows(data.results, 0);
     }
-    browseResults.hidden = false;
+    browseResultsDetails.hidden = false;
+    browseResultsDetails.open = true;
+    browseResultsDetails.querySelector("summary").textContent = `Rezultati (${data.total})`;
     browseState = { lat: geoData.lat, lon: geoData.lon, radius, fullQuery, minG, maxG,
                      shown: data.results.length, total: data.total };
     setBrowseHint(`Prikazano ${browseState.shown} od ${browseState.total}.`, browseState.total ? undefined : "err");

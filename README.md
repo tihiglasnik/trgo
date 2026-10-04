@@ -275,3 +275,12 @@ Sigurnost (što je napravljeno, a što nije):
 - Faza 1: jednostavan web frontend (bez logina) koji poziva istu logiku.
 - ~~Faza 2: login + spremanje lista~~ — gotovo, vidi gore ("Faza 2").
 - Faza 3: multi-store optimizacija, povijest cijena, price alerts.
+
+github
+
+git switch zagithu
+git restore --source=main --worktree --staged .
+git commit -m "Update snapshot"
+git push -u origin zagithu
+
+git switch main

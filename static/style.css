@@ -187,10 +187,14 @@ button:focus-visible {
 }
 .candidate-item.selected .n-chains { color: #fff; opacity: 0.85; }
 
+.product-row.has-selection {
+  border-right: 4px solid var(--good);
+}
+
 .chosen-label {
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  color: #1E5C2A;
+  color: var(--accent);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -532,8 +536,9 @@ summary {
   background: #fff;
   color: var(--ink);
 }
-#browse-results[hidden] { display: none; }
-#browse-results { margin-top: 4px; }
+#browse-results-details { margin-top: 10px; }
+#browse-results-details summary { padding: 4px 0; }
+#browse-results { margin-top: 6px; }
 
 /* ---- "siroki" red za dugacke nazive proizvoda (ne rezemo trotockom) --- */
 .receipt-row-wide {
