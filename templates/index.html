@@ -93,6 +93,10 @@
         <label class="inline-label">Težina od <input type="number" id="browse-min-g" min="0" step="10" placeholder="g"> g</label>
         <label class="inline-label">do <input type="number" id="browse-max-g" min="0" step="10" placeholder="g"> g</label>
       </div>
+      <div class="browse-filters">
+        <label class="inline-label">Volumen od <input type="number" id="browse-min-ml" min="0" step="50" placeholder="ml"> ml</label>
+        <label class="inline-label">do <input type="number" id="browse-max-ml" min="0" step="50" placeholder="ml"> ml</label>
+      </div>
       <div class="field">
         <label for="browse-exclude" class="muted-small">Isključi riječi (odvojeno zarezom)</label>
         <input type="text" id="browse-exclude" placeholder="npr. instant, 3u1, mlijeko">
@@ -103,6 +107,24 @@
       <summary>Rezultati</summary>
       <div id="browse-results" class="receipt"></div>
     </details>
+  </div>
+
+  <div class="tag-card alerts-card" id="alerts-card" hidden>
+    <div class="field">
+      <label for="alert-query">🔔 Obavijesti o cijenama</label>
+      <div id="alert-events" class="alert-events" hidden></div>
+      <input type="text" id="alert-query" placeholder="Traži proizvod za praćenje, npr. kava">
+      <div id="alert-candidates" class="candidate-list" hidden></div>
+      <div id="alert-chosen" class="chosen-label" hidden></div>
+      <div class="browse-filters" id="alert-target-row" hidden>
+        <label class="inline-label">Javi me kad padne na
+          <input type="number" id="alert-target" min="0" step="0.01" placeholder="EUR"> EUR</label>
+        <span class="muted-small">(prazno = automatski, kad je jeftino kao najniže u 30 dana)</span>
+      </div>
+      <button type="button" id="alert-add" class="btn-ghost" hidden>Dodaj alarm</button>
+      <p class="hint" id="alert-hint"></p>
+    </div>
+    <div id="alert-list" class="receipt" hidden></div>
   </div>
 
   <section id="results" hidden>

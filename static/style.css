@@ -598,3 +598,23 @@ summary {
   font-size: 0.78rem;
   color: #B8B093;
 }
+
+/* ---- obavijesti o cijenama ------------------------------------------------ */
+.alerts-card { margin-top: 20px; border-left-color: var(--accent); }
+.alerts-card[hidden] { display: none; }
+.alert-events {
+  background: #fff;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.alert-events[hidden] { display: none; }
+.alert-events-title { font-weight: 700; color: var(--accent-ink); font-size: 0.9rem; }
+.alert-event { display: flex; justify-content: space-between; gap: 10px; font-size: 0.9rem; flex-wrap: wrap; }
+#alert-candidates[hidden], #alert-chosen[hidden], #alert-target-row[hidden], #alert-add[hidden], #alert-list[hidden] { display: none; }
+#alert-list .receipt-row-wide { position: relative; }
+#alert-list .link-btn { align-self: flex-start; }

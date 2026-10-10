@@ -155,6 +155,8 @@ def main() -> None:
                           "sortirano po cijeni (npr. --browse \"kava\" ili --browse \"kava -instant\")")
     ap.add_argument("--min-g", type=float, help="samo uz --browse: minimalna tezina u gramima")
     ap.add_argument("--max-g", type=float, help="samo uz --browse: maksimalna tezina u gramima")
+    ap.add_argument("--min-ml", type=float, help="samo uz --browse: minimalni volumen u mililitrima")
+    ap.add_argument("--max-ml", type=float, help="samo uz --browse: maksimalni volumen u mililitrima")
     ap.add_argument("--limit", type=int, default=15, help="samo uz --browse: broj rezultata (default 15)")
     ap.add_argument("--optimize", action="store_true",
                      help="uz --product: provjeri isplati li se razdijeliti kupnju na DVIJE poslovnice")
@@ -207,7 +209,8 @@ def main() -> None:
     if args.browse:
         from browse import browse_by_price
         results, total = browse_by_price(conn, args.browse, lat, lon, args.radius,
-                                          min_grams=args.min_g, max_grams=args.max_g, limit=args.limit)
+                                          min_grams=args.min_g, max_grams=args.max_g,
+                                          min_ml=args.min_ml, max_ml=args.max_ml, limit=args.limit)
         print(f"\nPregled po cijeni za '{args.browse}' (radijus {args.radius} km):")
         if not results:
             print("  Nema rezultata.")

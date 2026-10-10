@@ -559,6 +559,8 @@ function renderAuthArea() {
     authArea.appendChild(el("button", { type: "button", class: "btn-refresh", onclick: () => openAuthDialog("login") }, "Prijava"));
   }
   listsPanel.hidden = !currentUser;
+  alertsCard.hidden = !currentUser;
+  if (currentUser) loadAlerts(); else resetAlertForm();
 }
 
 /* ---- spremljene liste ---------------------------------------------------- */
@@ -661,6 +663,8 @@ const browseQuery = document.getElementById("browse-query");
 const browseBtn = document.getElementById("browse-btn");
 const browseMinG = document.getElementById("browse-min-g");
 const browseMaxG = document.getElementById("browse-max-g");
+const browseMinMl = document.getElementById("browse-min-ml");
+const browseMaxMl = document.getElementById("browse-max-ml");
 const browseExclude = document.getElementById("browse-exclude");
 const browseHint = document.getElementById("browse-hint");
 const browseResults = document.getElementById("browse-results");
@@ -708,6 +712,8 @@ async function loadMoreBrowse() {
     });
     if (browseState.minG) params.set("min_g", browseState.minG);
     if (browseState.maxG) params.set("max_g", browseState.maxG);
+    if (browseState.minMl) params.set("min_ml", browseState.minMl);
+    if (browseState.maxMl) params.set("max_ml", browseState.maxMl);
 
     const resp = await fetch(`/api/browse?${params.toString()}`);
     const data = await resp.json();
@@ -750,12 +756,16 @@ async function runBrowse() {
     const radius = parseFloat(radiusInput.value);
     const minG = browseMinG.value;
     const maxG = browseMaxG.value;
+    const minMl = browseMinMl.value;
+    const maxMl = browseMaxMl.value;
 
     const params = new URLSearchParams({
       q: fullQuery, lat: geoData.lat, lon: geoData.lon, radius, limit: BROWSE_PAGE_SIZE,
     });
     if (minG) params.set("min_g", minG);
     if (maxG) params.set("max_g", maxG);
+    if (minMl) params.set("min_ml", minMl);
+    if (maxMl) params.set("max_ml", maxMl);
 
     const resp = await fetch(`/api/browse?${params.toString()}`);
     const data = await resp.json();
@@ -770,9 +780,9 @@ async function runBrowse() {
     browseResultsDetails.hidden = false;
     browseResultsDetails.open = true;
     browseResultsDetails.querySelector("summary").textContent = `Rezultati (${data.total})`;
-    browseState = { lat: geoData.lat, lon: geoData.lon, radius, fullQuery, minG, maxG,
+    browseState = { lat: geoData.lat, lon: geoData.lon, radius, fullQuery, minG, maxG, minMl, maxMl,
                      shown: data.results.length, total: data.total };
-    setBrowseHint(`Prikazano ${browseState.shown} od ${browseState.total}.`, browseState.total ? undefined : "err");
+    setBrowseHint(browseState.total ? `Prikazano ${browseState.shown} od ${browseState.total}.` : "Nema rezultata za zadani upit i filtere u ovom radijusu.", browseState.total ? undefined : "err");
     renderLoadMoreButton();
   } catch (err) {
     setBrowseHint("Veza sa serverom nije uspjela.", "err");
@@ -784,3 +794,148 @@ async function runBrowse() {
 
 browseBtn.addEventListener("click", runBrowse);
 browseQuery.addEventListener("keydown", (e) => { if (e.key === "Enter") runBrowse(); });
+
+
+/* ---- obavijesti o cijenama ------------------------------------------------ */
+const alertsCard = document.getElementById("alerts-card");
+const alertQuery = document.getElementById("alert-query");
+const alertCandidates = document.getElementById("alert-candidates");
+const alertChosen = document.getElementById("alert-chosen");
+const alertTargetRow = document.getElementById("alert-target-row");
+const alertTarget = document.getElementById("alert-target");
+const alertAddBtn = document.getElementById("alert-add");
+const alertHint = document.getElementById("alert-hint");
+const alertList = document.getElementById("alert-list");
+const alertEvents = document.getElementById("alert-events");
+let alertChoice = null;      // { ean, label }
+let alertSearchTimer = null;
+
+function setAlertHint(msg, kind) {
+  alertHint.textContent = msg || "";
+  alertHint.className = "hint" + (kind === "ok" ? " ok-text" : kind === "err" ? " error-text" : "");
+}
+
+function resetAlertForm() {
+  alertChoice = null;
+  alertQuery.value = "";
+  alertCandidates.hidden = true;
+  alertChosen.hidden = true;
+  alertTargetRow.hidden = true;
+  alertAddBtn.hidden = true;
+  alertTarget.value = "";
+  setAlertHint("");
+}
+
+alertQuery.addEventListener("input", () => {
+  alertChoice = null;
+  alertChosen.hidden = true;
+  alertTargetRow.hidden = true;
+  alertAddBtn.hidden = true;
+  clearTimeout(alertSearchTimer);
+  const q = alertQuery.value.trim();
+  if (q.length < 2) { alertCandidates.hidden = true; return; }
+  alertSearchTimer = setTimeout(async () => {
+    try {
+      const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await resp.json();
+      alertCandidates.innerHTML = "";
+      // samo kandidati s EAN-om - alarm treba stabilan identitet proizvoda
+      const withEan = (data.candidates || []).filter((c) => c.ean);
+      if (!withEan.length) { alertCandidates.hidden = true; setAlertHint("Nema proizvoda s poznatim EAN-om za taj upit.", "err"); return; }
+      setAlertHint("");
+      for (const c of withEan) {
+        alertCandidates.appendChild(el(
+          "div", { class: "candidate-item", onclick: () => {
+            alertChoice = { ean: c.ean, label: c.label };
+            alertCandidates.hidden = true;
+            alertChosen.textContent = `\u2713 ${c.label}`;
+            alertChosen.hidden = false;
+            alertTargetRow.hidden = false;
+            alertAddBtn.hidden = false;
+          } },
+          el("span", {}, c.label),
+          el("span", { class: "n-chains" }, `${c.chains_available} lanaca`)
+        ));
+      }
+      alertCandidates.hidden = false;
+    } catch (err) {
+      setAlertHint("Pretraga trenutno nije dostupna.", "err");
+    }
+  }, 300);
+});
+
+alertAddBtn.addEventListener("click", async () => {
+  if (!alertChoice) return;
+  const body = { ean: alertChoice.ean, label: alertChoice.label };
+  if (alertTarget.value !== "") body.target_price = parseFloat(alertTarget.value);
+  alertAddBtn.disabled = true;
+  try {
+    const resp = await fetch("/api/alerts", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { setAlertHint(data.error || "Alarm nije spremljen.", "err"); return; }
+
+    // alarm se vidi ODMAH; provjera cijena slijedi poslije jer na hladnoj bazi
+    // (prvi upit nakon pokretanja/osvjezavanja) moze trajati i desetak sekundi
+    resetAlertForm();
+    setAlertHint("Alarm dodan, provjeravam trenutne cijene...", "ok");
+    await loadAlerts();
+    const check = await fetch("/api/alerts/check", { method: "POST" });
+    setAlertHint(check.ok ? "Alarm dodan i provjeren." : "Alarm dodan (provjera cijena nije uspjela).", check.ok ? "ok" : "err");
+    await loadAlerts();
+  } catch (err) {
+    console.error("alert-add greska:", err);
+    setAlertHint("Spremanje nije uspjelo.", "err");
+  } finally {
+    alertAddBtn.disabled = false;
+  }
+});
+
+async function loadAlerts() {
+  try {
+    const [alertsResp, eventsResp] = await Promise.all([
+      fetch("/api/alerts"), fetch("/api/alerts/events?unseen=1"),
+    ]);
+    if (!alertsResp.ok) return;
+    const alertsData = await alertsResp.json();
+    const eventsData = eventsResp.ok ? await eventsResp.json() : [];
+
+    alertEvents.innerHTML = "";
+    alertEvents.hidden = eventsData.length === 0;
+    if (eventsData.length) {
+      alertEvents.appendChild(el("div", { class: "alert-events-title" }, `\ud83d\udd14 Novo (${eventsData.length})`));
+      for (const e of eventsData) {
+        alertEvents.appendChild(el(
+          "div", { class: "alert-event" },
+          el("span", {}, `${e.label} \u2014 ${fmtPrice(e.price)} (${e.chain})`),
+          el("span", { class: "muted-small" },
+            e.target_price == null ? "30-dnevni minimum" : `cilj ${fmtPrice(e.target_price)}`)
+        ));
+      }
+      alertEvents.appendChild(el("button", { type: "button", class: "link-btn", onclick: async () => {
+        await fetch("/api/alerts/events/mark-seen", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        });
+        loadAlerts();
+      } }, "označi sve pročitano"));
+    }
+
+    alertList.innerHTML = "";
+    alertList.hidden = alertsData.length === 0;
+    for (const a of alertsData) {
+      const mode = a.target_price == null ? "automatski (30-dnevni minimum)" : `cilj ${fmtPrice(a.target_price)}`;
+      const last = a.last_checked_price == null ? "" : ` \u00b7 zadnje: ${fmtPrice(a.last_checked_price)}`;
+      alertList.appendChild(wideReceiptRow(a.label, mode + last, "", "", {}));
+      const row = alertList.lastElementChild;
+      row.appendChild(el("button", { type: "button", class: "link-btn", onclick: async () => {
+        if (!confirm("Obrisati ovaj alarm?")) return;
+        await fetch(`/api/alerts/${a.id}`, { method: "DELETE" });
+        loadAlerts();
+      } }, "obriši"));
+    }
+  } catch (err) {
+    setAlertHint("Alarmi trenutno nisu dostupni.", "err");
+  }
+}

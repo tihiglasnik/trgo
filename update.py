@@ -23,6 +23,10 @@ import argparse
 import sys
 from pathlib import Path
 
+import sqlite3
+
+import alerts
+import auth_db
 from fetch_archive import ArchiveFetchError, fetch_latest
 from fetch_enrichment import EnrichmentFetchError, fetch_enrichment
 from import_data import run_import
@@ -38,6 +42,11 @@ def main() -> None:
     ap.add_argument("--skip-fallback-search", action="store_true",
                      help="brze/tise osvjezavanje na sporijim diskovima, uz sporiju pretragu za "
                           "proizvode izvan glavnog kataloga (vidi import_data.py --help)")
+    ap.add_argument("--users-db", type=Path, default=Path("users.db"),
+                     help="baza s korisnickim alarmima na cijene (default: users.db). "
+                          "Ako ne postoji, provjera alarma se jednostavno preskace.")
+    ap.add_argument("--skip-alerts", action="store_true",
+                     help="preskoci provjeru alarma na cijene nakon uvoza")
     args = ap.parse_args()
 
     print("[1/3] Preuzimam enrichment podatke (geolokacije + pocisceni katalog)...")
@@ -65,6 +74,17 @@ def main() -> None:
     print(f"\nGotovo. Baza spremljena u: {args.db}")
     if failed:
         print(f"Lanci koji NISU uspjesno uvezeni: {', '.join(failed)}", file=sys.stderr)
+
+    if not args.skip_alerts and args.users_db.exists():
+        print("\nProvjeravam alarme na cijene...")
+        try:
+            users_conn = auth_db.get_conn(args.users_db)
+            grocery_conn = sqlite3.connect(args.db)
+            n = alerts.check_all_alerts(users_conn, grocery_conn)
+            print(f"  {n} novih dogadjaja." if n else "  Nema novih dogadjaja.")
+        except Exception as exc:
+            print(f"  Upozorenje: provjera alarma nije uspjela: {exc}", file=sys.stderr)
+
     print("\nSad mozes pokrenuti npr.:")
     print(f'  python cli.py --db {args.db} --address "Ilica 1, Zagreb" --product mlijeko')
 

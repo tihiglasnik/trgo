@@ -52,6 +52,35 @@ CREATE TABLE IF NOT EXISTS remembered_products (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, query_norm)
 );
+
+-- target_price = NULL znaci "automatski" nacin: koristi se best_price_30
+-- iz izvornih podataka (30-dnevni minimum te konkretne poslovnice) umjesto
+-- rucno postavljenog praga - vidi alerts.py za potpuno objasnjenje. U
+-- users.db (ne grocery.db) jer se grocery.db u potpunosti brise i gradi
+-- iznova pri svakom osvjezavanju - alarmi/povijest ne smiju biti tamo.
+CREATE TABLE IF NOT EXISTS price_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ean TEXT NOT NULL,
+    label TEXT NOT NULL,
+    target_price REAL,
+    last_checked_price REAL,
+    last_checked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Zabiljezeni "okidaji" (kad cijena prvi put padne na/ispod praga). Jedan
+-- zapis po prelasku, ne po svakoj provjeri - da se ne spamira isti alarm
+-- dok cijena ostaje niska.
+CREATE TABLE IF NOT EXISTS alert_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id INTEGER NOT NULL REFERENCES price_alerts(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    price REAL NOT NULL,
+    chain TEXT,
+    triggered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    seen INTEGER NOT NULL DEFAULT 0
+);
 """
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -215,3 +244,72 @@ def get_remembered(conn: sqlite3.Connection, user_id: int, query: str) -> sqlite
         "SELECT ean, name, label FROM remembered_products WHERE user_id = ? AND query_norm = ?",
         (user_id, query_norm),
     ).fetchone()
+
+
+# ---- obavijesti o cijenama ---------------------------------------------
+
+def create_alert(conn: sqlite3.Connection, user_id: int, ean: str, label: str,
+                  target_price: float | None) -> int:
+    """target_price=None znaci automatski ("30-dnevni minimum") alarm."""
+    if not ean:
+        raise AuthError("Alarm treba konkretan proizvod (EAN).")
+    if target_price is not None and target_price <= 0:
+        raise AuthError("Ciljna cijena mora biti veca od 0.")
+    cur = conn.execute(
+        "INSERT INTO price_alerts (user_id, ean, label, target_price) VALUES (?, ?, ?, ?)",
+        (user_id, ean, label, target_price),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_alerts(conn: sqlite3.Connection, user_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM price_alerts WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
+    ).fetchall()
+
+
+def delete_alert(conn: sqlite3.Connection, user_id: int, alert_id: int) -> bool:
+    cur = conn.execute("DELETE FROM price_alerts WHERE id = ? AND user_id = ?", (alert_id, user_id))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def update_alert_check(conn: sqlite3.Connection, alert_id: int, price: float | None) -> None:
+    conn.execute(
+        "UPDATE price_alerts SET last_checked_price = ?, last_checked_at = datetime('now') WHERE id = ?",
+        (price, alert_id),
+    )
+
+
+def record_alert_event(conn: sqlite3.Connection, alert_id: int, user_id: int, price: float, chain: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO alert_events (alert_id, user_id, price, chain) VALUES (?, ?, ?, ?)",
+        (alert_id, user_id, price, chain),
+    )
+    return cur.lastrowid
+
+
+def get_events(conn: sqlite3.Connection, user_id: int, unseen_only: bool = False) -> list[sqlite3.Row]:
+    where = "ae.user_id = ?" + (" AND ae.seen = 0" if unseen_only else "")
+    return conn.execute(
+        f"""
+        SELECT ae.id, ae.price, ae.chain, ae.triggered_at, ae.seen, pa.ean, pa.label, pa.target_price
+        FROM alert_events ae JOIN price_alerts pa ON pa.id = ae.alert_id
+        WHERE {where}
+        ORDER BY ae.triggered_at DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+
+def mark_events_seen(conn: sqlite3.Connection, user_id: int, event_ids: list[int] | None = None) -> None:
+    if event_ids is None:
+        conn.execute("UPDATE alert_events SET seen = 1 WHERE user_id = ?", (user_id,))
+    else:
+        placeholders = ",".join("?" for _ in event_ids)
+        conn.execute(
+            f"UPDATE alert_events SET seen = 1 WHERE user_id = ? AND id IN ({placeholders})",
+            (user_id, *event_ids),
+        )
+    conn.commit()

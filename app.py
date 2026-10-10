@@ -37,6 +37,7 @@ from pathlib import Path
 
 from flask import Flask, g, jsonify, render_template, request, session
 
+import alerts
 import auth_db
 from basket import BasketItem, calculate_store_options
 from browse import browse_by_price
@@ -50,6 +51,7 @@ import ranking
 MAX_PRODUCTS = 25          # razumna gornja granica po upitu
 MAX_RADIUS_KM = 50.0
 MAX_LISTS_PER_USER = 50
+MAX_ALERTS_PER_USER = 30
 MAX_BROWSE_LIMIT = 50
 LOGIN_LOCKOUT_AFTER = 10   # neuspjelih pokusaja prijave prije privremenog zakljucavanja
 LOGIN_LOCKOUT_SECONDS = 60
@@ -248,6 +250,8 @@ def api_browse():
     try:
         min_g = parse_optional_float("min_g")
         max_g = parse_optional_float("max_g")
+        min_ml = parse_optional_float("min_ml")
+        max_ml = parse_optional_float("max_ml")
     except ValueError as exc:
         return error(f"'{exc.args[0]}' mora biti broj.")
     if min_g is not None and min_g < 0:
@@ -256,6 +260,12 @@ def api_browse():
         return error("max_g ne smije biti negativan.")
     if min_g is not None and max_g is not None and min_g > max_g:
         return error("min_g ne smije biti veci od max_g.")
+    if min_ml is not None and min_ml < 0:
+        return error("min_ml ne smije biti negativan.")
+    if max_ml is not None and max_ml < 0:
+        return error("max_ml ne smije biti negativan.")
+    if min_ml is not None and max_ml is not None and min_ml > max_ml:
+        return error("min_ml ne smije biti veci od max_ml.")
 
     try:
         limit = int(request.args.get("limit", 15))
@@ -272,6 +282,7 @@ def api_browse():
         return error("offset ne smije biti negativan.")
 
     results, total = browse_by_price(get_db(), q, lat, lon, radius, min_grams=min_g, max_grams=max_g,
+                                      min_ml=min_ml, max_ml=max_ml,
                                       limit=limit, offset=offset)
     return jsonify({
         "results": [
@@ -426,6 +437,91 @@ def api_remember():
     auth_db.remember_product(get_users_db(), user["id"], query,
                               str(ean) if ean else None, str(name) if name else None, label)
     return jsonify({"ok": True})
+
+
+@app.route("/api/alerts", methods=["GET"])
+@login_required
+def api_alerts_get():
+    user = current_user()
+    rows = auth_db.get_alerts(get_users_db(), user["id"])
+    return jsonify([
+        {"id": r["id"], "ean": r["ean"], "label": r["label"], "target_price": r["target_price"],
+         "last_checked_price": r["last_checked_price"], "last_checked_at": r["last_checked_at"]}
+        for r in rows
+    ])
+
+
+@app.route("/api/alerts", methods=["POST"])
+@login_required
+def api_alerts_create():
+    user = current_user()
+    existing = auth_db.get_alerts(get_users_db(), user["id"])
+    if len(existing) >= MAX_ALERTS_PER_USER:
+        return error(f"Dosegnut je limit od {MAX_ALERTS_PER_USER} alarma.")
+
+    data = request.get_json(silent=True) or {}
+    ean = str(data.get("ean") or "").strip()
+    label = str(data.get("label") or "").strip()[:200]
+    if not ean or not label:
+        return error("Nedostaje proizvod (ean/label).")
+
+    raw_target = data.get("target_price")
+    target_price = None
+    if raw_target not in (None, ""):
+        try:
+            target_price = float(raw_target)
+        except (TypeError, ValueError):
+            return error("target_price mora biti broj (ili prazno za automatski 30-dnevni alarm).")
+
+    try:
+        alert_id = auth_db.create_alert(get_users_db(), user["id"], ean, label, target_price)
+    except auth_db.AuthError as exc:
+        return error(str(exc))
+    return jsonify({"id": alert_id})
+
+
+@app.route("/api/alerts/<int:alert_id>", methods=["DELETE"])
+@login_required
+def api_alerts_delete(alert_id: int):
+    user = current_user()
+    ok = auth_db.delete_alert(get_users_db(), user["id"], alert_id)
+    if not ok:
+        return error("Alarm nije pronađen.", status=404)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/alerts/events", methods=["GET"])
+@login_required
+def api_alerts_events():
+    user = current_user()
+    unseen_only = request.args.get("unseen") in ("1", "true", "yes")
+    rows = auth_db.get_events(get_users_db(), user["id"], unseen_only=unseen_only)
+    return jsonify([
+        {"id": r["id"], "price": r["price"], "chain": r["chain"], "triggered_at": r["triggered_at"],
+         "seen": bool(r["seen"]), "ean": r["ean"], "label": r["label"], "target_price": r["target_price"]}
+        for r in rows
+    ])
+
+
+@app.route("/api/alerts/events/mark-seen", methods=["POST"])
+@login_required
+def api_alerts_mark_seen():
+    user = current_user()
+    data = request.get_json(silent=True) or {}
+    event_ids = data.get("event_ids")
+    if event_ids is not None and not isinstance(event_ids, list):
+        return error("event_ids mora biti lista ili izostavljeno (oznacava sve).")
+    auth_db.mark_events_seen(get_users_db(), user["id"], event_ids)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/alerts/check", methods=["POST"])
+@login_required
+def api_alerts_check():
+    """Rucna provjera na zahtjev (korisno za testiranje, ili ako korisnik ne
+    zeli cekati sljedece osvjezavanje podataka)."""
+    n = alerts.check_all_alerts(get_users_db(), get_db())
+    return jsonify({"triggered": n})
 
 
 @app.route("/api/find", methods=["POST"])
@@ -620,7 +716,13 @@ def api_refresh():
         # dalje radi normalno
         tmp_db_path.replace(db_path)
 
-        return jsonify({"ok": True, "failed_chains": failed})
+        triggered = 0
+        try:
+            triggered = alerts.check_all_alerts(get_users_db(), get_db())
+        except Exception as exc:
+            print(f"Upozorenje: provjera alarma nije uspjela: {exc}", file=sys.stderr)
+
+        return jsonify({"ok": True, "failed_chains": failed, "alerts_triggered": triggered})
     finally:
         _refresh_lock.release()
 
