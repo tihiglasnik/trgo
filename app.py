@@ -44,7 +44,7 @@ from browse import browse_by_price
 from fetch_archive import ArchiveFetchError, fetch_latest
 from fetch_enrichment import EnrichmentFetchError, fetch_enrichment
 from geocoder import GeocodingError, geocode
-from import_data import run_import
+from import_data import get_data_info, run_import
 from product_matcher import search as search_products
 import ranking
 
@@ -294,6 +294,12 @@ def api_browse():
         "total": total,
         "offset": offset,
     })
+
+
+@app.route("/api/status")
+def api_status():
+    """Kada su podaci azurirani (datum arhive, vrijeme uvoza, neuvezeni lanci)."""
+    return jsonify(get_data_info(get_db(), app.config["DB_PATH"]))
 
 
 @app.route("/api/geocode", methods=["POST"])

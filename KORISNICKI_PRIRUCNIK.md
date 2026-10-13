@@ -220,7 +220,7 @@ Kad je filter uključen, proizvodi koji se broje na komade ("kom") ili imaju nek
 
 ## 6. Račun: prijava, liste, zapamćeni izbori
 
-Račun je **nije obavezan**. Bez njega sve iz poglavlja 4 i 5 radi. Račun donosi tri dodatka.
+Račun **nije obavezan**. Bez njega sve iz poglavlja 4 i 5 radi. Račun donosi tri dodatka.
 
 ### 6.1. Registracija i prijava
 
@@ -298,6 +298,19 @@ Ako osvježavanje ne uspije (nema interneta, izvor nedostupan), **stara baza ost
 
 Tijekom osvježavanja nemoj gasiti aplikaciju ni računalo.
 
+### Kako vidim koliko su podaci svježi?
+
+Ispod naslova, u zaglavlju stranice, uvijek piše na koji se dan odnose cijene, na primjer:
+
+> Cijene od 22. 9. 2026. (prije 3 dana) · uvezeno 25. 9. 2026. 14:21
+
+- Tekst je **bež** kad su cijene današnje ili jučerašnje.
+- Postaje **žut** kad su starije od dva dana, ili kad nešto nije u redu. Tada vrijedi osvježiti.
+- Ako piše **"⚠ nisu uvezeni: ..."**, neki lanac pri zadnjem osvježavanju nije uspješno učitan i njegovih cijena nema u rezultatima. Pokušaj ponovno osvježiti.
+- Ako piše **"datum cijena nije zabilježen"**, baza je napravljena starijom verzijom ili ručnim uvozom. Jedno osvježavanje to rješava.
+
+Nakon uspješnog osvježavanja ovaj redak se sam obnovi. U terminalu isti podatak vidiš prvim redom kad pokreneš `cli.py`.
+
 ---
 
 ## 9. Brzina: što je normalno
@@ -346,7 +359,7 @@ Aplikacija radi na računalu na kojem je pokrenuta. Preglednik na istoj mreži b
 
 ## 12. Rješavanje problema
 
-| Problema | Što napraviti |
+| Problem | Što napraviti |
 |---|---|
 | `TemplateNotFound: index.html` | `index.html` nije u podmapi `templates` (poglavlje 2) |
 | Stranica je bez stilova ili ništa ne reagira | `style.css` i `app.js` moraju biti u podmapi `static` |
@@ -383,6 +396,7 @@ Jednom:     pip install flask
             python3 update.py
 Svaki put:  ./start.sh                (pa u pregledniku http://127.0.0.1:5000)
 Povremeno:  gumb "Osvježi podatke"    (ili python3 update.py)
+            datum cijena piše u zaglavlju; žuto = osvježi
 ```
 
 1. Upiši **adresu**, namjesti **radijus**.

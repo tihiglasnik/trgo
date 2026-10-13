@@ -19,13 +19,22 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import re
 import sqlite3
 import sys
+from datetime import date, datetime
 from pathlib import Path
 
 from barcodes import normalize_barcode
 
 SCHEMA_TABLES = """
+-- Podaci o samom uvozu (datum arhive, vrijeme uvoza) - prikazuju se u sucelju.
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS stores (
     chain TEXT NOT NULL,
     store_code TEXT NOT NULL,
@@ -175,7 +184,8 @@ def import_chain(
     conn: sqlite3.Connection,
     chain_dir: Path,
     geo: dict[tuple[str, str], tuple[float, float, str]],
-) -> None:
+) -> bool:
+    """True ako je lanac uvezen, False ako je preskocen (nedostaje CSV ili stupac)."""
     chain = chain_dir.name.strip().lower()
 
     stores_path = chain_dir / "stores.csv"
@@ -183,7 +193,7 @@ def import_chain(
     prices_path = chain_dir / "prices.csv"
     if not (stores_path.exists() and products_path.exists() and prices_path.exists()):
         print(f"  ! {chain}: nedostaje jedan od CSV fajlova, preskacem", file=sys.stderr)
-        return
+        return False
 
     # --- provjera da svi fajlovi imaju ocekivane stupce PRIJE nego bilo sto upisemo ---
     # (izbjegava da lanac ostane napola uvezen ako mu format odstupa)
@@ -199,7 +209,7 @@ def import_chain(
         if missing:
             print(f"  ! {chain}: {path.name} nema ocekivane stupce {missing} "
                   f"(ima: {headers}) - preskacem cijeli lanac", file=sys.stderr)
-            return
+            return False
 
     # --- stores ---
     store_rows = []
@@ -303,6 +313,7 @@ def import_chain(
     extra = f", preskoceno {skipped} redaka bez store_id/product_id" if skipped else ""
     print(f"  {chain}: {len(store_rows)} poslovnica ({geocoded} s koordinatama), "
           f"{len(product_rows)} proizvoda, {price_count} cijena{extra}")
+    return True
 
 
 def run_import(
@@ -346,8 +357,11 @@ def run_import(
         failed = []
         for chain_dir in chain_dirs:
             try:
-                import_chain(conn, chain_dir, geo)
-                conn.commit()
+                if import_chain(conn, chain_dir, geo):
+                    conn.commit()
+                else:
+                    conn.rollback()
+                    failed.append(chain_dir.name)
             except Exception as exc:  # jedan los lanac ne smije srusiti ostatak importa
                 conn.rollback()
                 failed.append(chain_dir.name)
@@ -372,9 +386,55 @@ def run_import(
             print("  preskoceno (--skip-fallback-search) - pretraga za proizvode izvan"
                   " glavnog kataloga bit ce sporija (LIKE umjesto FTS5), ali osvjezavanje je brze.")
 
+        # zapisi kad su podaci uvezeni i na koji se dan odnose. Datum arhive se
+        # izvodi iz naziva mape (update.py/osvjezavanje je nazivaju YYYY-MM-DD);
+        # za rucni uvoz iz mape drukcijeg naziva datum ostaje nepoznat.
+        m = re.fullmatch(r"\d{4}-\d{2}-\d{2}", archive_dir.name)
+        meta = {
+            "archive_date": m.group(0) if m else "",
+            "imported_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "failed_chains": ",".join(failed),
+        }
+        conn.executemany("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", list(meta.items()))
+        conn.commit()
+
         return failed
     finally:
         conn.close()
+
+
+def get_data_info(conn: sqlite3.Connection, db_path: str | Path) -> dict:
+    """
+    Kada su podaci azurirani. Cita tablicu `meta` (ako je baza napravljena
+    novijom verzijom). Za STARE baze bez nje vraca samo vrijeme zadnje izmjene
+    datoteke baze (source="file") - datum cijena tada nije poznat.
+    Vraca: archive_date (YYYY-MM-DD ili None), days_old (int ili None),
+    imported_at (ISO), failed_chains (lista), source ("meta"|"file"|"unknown").
+    """
+    info = {"archive_date": None, "days_old": None, "imported_at": None,
+            "failed_chains": [], "source": "unknown"}
+    has_meta = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'").fetchone()
+    if has_meta:
+        meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
+        info["archive_date"] = meta.get("archive_date") or None
+        info["imported_at"] = meta.get("imported_at") or None
+        info["failed_chains"] = [c for c in (meta.get("failed_chains") or "").split(",") if c]
+        if info["imported_at"]:
+            info["source"] = "meta"
+    if not info["imported_at"]:
+        try:
+            info["imported_at"] = datetime.fromtimestamp(os.path.getmtime(db_path)).astimezone() \
+                .isoformat(timespec="seconds")
+            info["source"] = "file"
+        except OSError:
+            pass
+    if info["archive_date"]:
+        try:
+            info["days_old"] = (date.today() - date.fromisoformat(info["archive_date"])).days
+        except ValueError:
+            info["archive_date"] = None
+    return info
 
 
 def main() -> None:

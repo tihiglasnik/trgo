@@ -111,6 +111,47 @@ async function maybeRunOptimize(lat, lon, radius, items) {
 /* ---- osvjezavanje podataka (brise staru arhivu, povlaci novu) ---------- */
 const refreshBtn = document.getElementById("refresh-btn");
 const refreshFast = document.getElementById("refresh-fast");
+const dataInfo = document.getElementById("data-info");
+
+/* Kad su podaci azurirani: datum arhive cijena + vrijeme uvoza (iz baze). */
+function fmtDateTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString("hr-HR", { day: "numeric", month: "numeric", year: "numeric",
+                                      hour: "2-digit", minute: "2-digit" });
+}
+function fmtArchiveDate(ymd) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return `${d}. ${m}. ${y}.`;
+}
+async function loadDataInfo() {
+  try {
+    const resp = await fetch("/api/status");
+    if (!resp.ok) return;
+    const d = await resp.json();
+    let text = "";
+    let stale = false;
+    if (d.archive_date) {
+      const age = d.days_old === 0 ? "danas" : d.days_old === 1 ? "jučer" : `prije ${d.days_old} dana`;
+      text = `Cijene od ${fmtArchiveDate(d.archive_date)} (${age})`;
+      if (d.imported_at) text += ` · uvezeno ${fmtDateTime(d.imported_at)}`;
+      stale = d.days_old >= 2;
+    } else if (d.imported_at) {
+      text = `Baza izgrađena ${fmtDateTime(d.imported_at)} · datum cijena nije zabilježen, osvježi podatke`;
+      stale = true;
+    }
+    if (d.failed_chains && d.failed_chains.length) {
+      text += ` · ⚠ nisu uvezeni: ${d.failed_chains.join(", ")}`;
+      stale = true;
+    }
+    dataInfo.textContent = text;
+    dataInfo.classList.toggle("stale", stale);
+    dataInfo.title = stale ? "Podaci su stari ili nepotpuni - razmisli o osvježavanju." : "";
+  } catch (err) {
+    /* informativno - ne smije smetati radu aplikacije */
+  }
+}
+loadDataInfo();
 const refreshStatus = document.getElementById("refresh-status");
 
 refreshBtn.addEventListener("click", async () => {
@@ -135,6 +176,7 @@ refreshBtn.addEventListener("click", async () => {
       refreshStatus.textContent = data.error || "Osvježavanje nije uspjelo.";
       return;
     }
+    loadDataInfo();
     refreshStatus.className = "refresh-status ok-text";
     refreshStatus.textContent = data.failed_chains && data.failed_chains.length
       ? `Gotovo, ali neki lanci nisu uvezeni: ${data.failed_chains.join(", ")}`

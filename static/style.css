@@ -618,3 +618,12 @@ summary {
 #alert-candidates[hidden], #alert-chosen[hidden], #alert-target-row[hidden], #alert-add[hidden], #alert-list[hidden] { display: none; }
 #alert-list .receipt-row-wide { position: relative; }
 #alert-list .link-btn { align-self: flex-start; }
+
+/* ---- kad su podaci azurirani ---------------------------------------------- */
+.data-info {
+  display: block;
+  font-size: 0.78rem;
+  color: #B8B093;
+  margin-top: 2px;
+}
+.data-info.stale { color: #E8B65A; }

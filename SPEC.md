@@ -6,7 +6,7 @@
 | Obuhvaća | Faze 0, 1 i 2 u cijelosti; od Faze 3: optimizacija kroz dvije trgovine, pregled po cijeni, obavijesti o cijenama |
 | Nije napravljeno | povijest cijena kroz više dana (ostatak Faze 3), AI sloj (Faza 4) |
 | Referentni podaci | cijene.dev dnevna arhiva od 22. 9. 2026. |
-| Veličina koda | 4.746 redaka: Python 3,0k, JS 0,9k, CSS 0.6k, HTML 0.2k, shell 36 |
+| Veličina koda | 4.882 redaka: Python 3.1k, JS 1.0k, CSS 0.6k, HTML 0.2k, shell 36 |
 | Korisnički priručnik | `KORISNICKI_PRIRUCNIK.md` (zaseban dokument) |
 
 Dokument je pisan iz stvarnog koda i izmjerenih podataka. Gdje nešto nije testirano ili je nepoznato, to piše izričito (odjeljci 12 i 13).
@@ -108,6 +108,9 @@ Izvan opsega: nativna mobilna aplikacija, naručivanje/dostava, stvarni put (kor
 **F-12 Osvježavanje**
 - Briše staru arhivu i enrichment, preuzima najnovije, gradi **privremenu** bazu i tek po potpunom uspjehu zamjenjuje staru. Neuspjeh ne uništava postojeću bazu.
 - Opcija "brže" preskače izgradnju FTS indeksa za proizvode izvan kataloga (vidi odjeljak 11).
+- **Prikaz kad su podaci ažurirani:** zaglavlje prikazuje datum arhive cijena ("Cijene od 22. 9. 2026. (prije 3 dana)") i vrijeme uvoza. Prikaz postaje žut ako su cijene starije od 2 dana, ako je lanac preskočen pri uvozu (uz popis lanaca) ili ako datum nije zabilježen. Nakon uspješnog osvježavanja prikaz se sam obnovi. Isti podatak ispisuje CLI na početku rada.
+- Preskočeni lanac (neispravan ili nepotpun CSV) računa se kao neuspješan uvoz, pa se uvijek vidi.
+- Datum arhive izvodi se iz naziva mape (`data/YYYY-MM-DD`, što rade `update.py` i gumb). Kod ručnog uvoza iz mape drukčijeg naziva datum ostaje nepoznat, a prikazuje se samo vrijeme izgradnje baze. Isto vrijedi za baze napravljene prije ove izmjene: dok se ne osvježe, prikazuje se vrijeme zadnje izmjene datoteke i napomena da datum cijena nije zabilježen.
 
 ### A5. Korisnički tokovi (sažeto)
 
@@ -152,11 +155,11 @@ Detaljan opis za krajnjeg korisnika: `KORISNICKI_PRIRUCNIK.md`.
 
 | Datoteka | Redaka | Odgovornost |
 |---|---|---|
-| `app.py` | 769 | Flask: rute, sesije, zaključavanje prijave, osvježavanje |
+| `app.py` | 775 | Flask: rute, sesije, zaključavanje prijave, osvježavanje |
 | `auth_db.py` | 315 | Shema i operacije `users.db` |
-| `import_data.py` | 407 | CSV → SQLite, validacija, izolacija grešaka po lancu |
+| `import_data.py` | 467 | CSV → SQLite, validacija, izolacija grešaka po lancu |
 | `browse.py` | 249 | Pregled po cijeni |
-| `cli.py` | 262 | Terminalsko sučelje |
+| `cli.py` | 280 | Terminalsko sučelje |
 | `optimize.py` | 152 | Dvije trgovine |
 | `basket.py` | 142 | Cijena košarice po poslovnici |
 | `product_matcher.py` | 121 | Pretraga proizvoda (FTS5) |
@@ -164,7 +167,7 @@ Detaljan opis za krajnjeg korisnika: `KORISNICKI_PRIRUCNIK.md`.
 | `alerts.py` | 101 | Provjera alarma |
 | `update.py` | 93 | Preuzimanje + uvoz + provjera alarma jednom naredbom |
 | `geocoder.py` / `geo.py` / `barcodes.py` / `ranking.py` | 76 / 29 / 30 / 60 | Pomoćni moduli |
-| `templates/index.html`, `static/app.js`, `static/style.css` | 176 / 941 / 620 | Frontend |
+| `templates/index.html`, `static/app.js`, `static/style.css` | 177 / 983 / 629 | Frontend |
 | `start.sh` | 36 | Pokretanje jednom naredbom |
 
 Obavezan raspored mapa: `index.html` u `templates/`, `style.css` i `app.js` u `static/`, ostalo izravno u korijenu. Datoteke koje nastaju u radu: `grocery.db`, `users.db`, `users.secret_key`, `data/`, `enrichment/`, `grocery.refreshing.db`.
@@ -210,6 +213,7 @@ Lanci bez ijedne koordinate (18): Ribola, Stanić, Stridon, Trgovina Krk, Gavran
 | `chain_products` | `(chain, product_code)` | `barcode, canonical_ean, name, brand, category, unit, quantity` (tekst) |
 | `prices` | `(chain, store_code, product_code)` | `price, unit_price, best_price_30, anchor_price, special_price` |
 | `canonical_products` | `ean` | `brand, name, unit, quantity` (broj) |
+| `meta` | `key` | `value`; ključevi `archive_date`, `imported_at`, `failed_chains` |
 | `fts_canonical` | virtualna FTS5 | `brand, name` (vanjski sadržaj iz `canonical_products`) |
 | `fts_chain_products` | virtualna FTS5, **opcionalna** | `name` (vanjski sadržaj iz `chain_products`) |
 
@@ -248,7 +252,7 @@ Sekundarni indeksi (grade se **nakon** uvoza): `chain_products(canonical_ean)`, 
 
 ### B6. HTTP API
 
-Sve rute vraćaju JSON osim `GET /`. Greške: `{"error": "poruka"}`. Ukupno 24 rute.
+Sve rute vraćaju JSON osim `GET /`. Greške: `{"error": "poruka"}`. Ukupno 25 ruta.
 
 | Ruta | Metoda | Prijava | Ulaz → izlaz (sažeto) |
 |---|---|---|---|
@@ -259,6 +263,7 @@ Sve rute vraćaju JSON osim `GET /`. Greške: `{"error": "poruka"}`. Ukupno 24 r
 | `/api/find` | POST | ne | `{lat,lon,radius,items:[{query,ean\|name,label}]}` (1–25) → `{per_item, all_stores(≤30), all_stores_total, chains_summary, nearest_overall, compromise}` |
 | `/api/optimize` | POST | ne | isto + `min_savings` → `{plan\|null, baseline\|null}` |
 | `/api/refresh` | POST | **ne** | `?skip_fallback_search=1` → `{ok, failed_chains, alerts_triggered}`; 409 u tijeku; 502 preuzimanje |
+| `/api/status` | GET | ne | → `{archive_date, days_old, imported_at, failed_chains, source}`; `source`: `meta` ili `file` (stara baza bez `meta`) |
 | `/api/auth/me` · `register` · `login` · `logout` | GET/POST | ne | `{user}` + kolačić; 401, 429 |
 | `/api/lists` | GET, POST | da | popis / `{name}` ≤ 100 (limit 50) |
 | `/api/lists/<id>` | GET, DELETE | da | lista sa stavkama / brisanje |
@@ -433,3 +438,4 @@ Preporučeni redoslijed: R-01 → R-02 → R-03 → R-04 → R-06 → R-08; osta
 | `-0.25` u pregledu bez učinka | 0.25 postoji samo u koloni količine, FTS je ne indeksira | filtriranje nad prikazanim nazivom |
 | Široki upiti ("sir", 856 kandidata) tiho gubili proizvode | pool od 500 | pool 3000 |
 | Alarm: sučelje "zamrznuto" nakon dodavanja | prva provjera na hladnoj bazi do ~14 s | alarm se prikaže odmah, provjera poslije uz poruku |
+| Preskočen lanac (neispravan CSV) nije se vidio u popisu neuspjelih | `import_chain` je samo ispisao upozorenje i vratio se | vraća `True/False`; preskočeni lanci idu u `failed_chains` i u prikaz |

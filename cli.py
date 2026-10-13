@@ -198,6 +198,24 @@ def main() -> None:
               f"Pokreni import_data.py.", file=sys.stderr)
         sys.exit(1)
 
+    from import_data import get_data_info
+    di = get_data_info(conn, args.db)
+    def _nice(iso: str) -> str:
+        from datetime import datetime
+        try:
+            return datetime.fromisoformat(iso).strftime("%d.%m.%Y. %H:%M")
+        except ValueError:
+            return iso
+
+    if di["archive_date"]:
+        y, m, d = di["archive_date"].split("-")
+        age = {0: "danas", 1: "jucer"}.get(di["days_old"], f"prije {di['days_old']} dana")
+        print(f"Podaci: cijene od {int(d)}.{int(m)}.{y}. ({age}), uvezeno {_nice(di['imported_at'])}")
+    elif di["imported_at"]:
+        print(f"Podaci: baza izgradjena {_nice(di['imported_at'])} (datum cijena nije zabiljezen)")
+    if di["failed_chains"]:
+        print(f"UPOZORENJE: ovi lanci nisu uvezeni: {', '.join(di['failed_chains'])}")
+
     print("Trazim proizvode...")
     items = []
     labels: dict[str, str] = {}
